@@ -1,0 +1,159 @@
+updateShiftUrls();
+
+startSyncTracking();
+
+Promise.all([
+
+    fetchCSV(shiftUrlPrev, true),
+    fetchCSV(shiftUrl),
+    fetchCSV(shiftUrlNext, true),
+
+    fetchCSV(holidayUrl, true),
+    fetchCSV(notesUrl, true),
+    fetchCSV(trainingUrl, true),
+
+    fetchCSV(productionPlanUrl, true),
+    fetchCSV(productionTargetUrl, true),
+
+    fetchCSV(imsUrl, true),
+
+    fetchCSV(nonExecUrlPrev, true),
+    fetchCSV(nonExecUrl),
+    fetchCSV(nonExecUrlNext, true),
+
+    fetchCSV(seniorityExecUrl, true),
+    fetchCSV(seniorityNonExecUrl, true)
+
+])
+
+.then(([
+    shiftTextPrev,
+    shiftTextCurrent,
+    shiftTextNext,
+    holidayText,
+    notesText,
+    trainingText,
+    productionPlanText,
+    productionTargetText,
+    imsText,
+    nonExecTextPrev,
+    nonExecTextCurrent,
+    nonExecTextNext,
+    seniorityExecText,
+    seniorityNonExecText
+]) => {
+
+    if(!shiftTextCurrent || shiftTextCurrent.trim() === ""){
+
+        document.getElementById("today").innerHTML =
+            "<div style='color:red;font-weight:bold;'>SHIFT DATA NOT LOADED</div>";
+
+        return;
+    }
+
+    if(!holidayText) holidayText = "";
+    if(!notesText) notesText = "";
+    if(!trainingText) trainingText = "";
+    if(!productionPlanText) productionPlanText = "";
+    if(!productionTargetText) productionTargetText = "";
+    if(!nonExecTextCurrent) nonExecTextCurrent = "";
+    if(!nonExecTextNext) nonExecTextNext = "";
+    if(!seniorityExecText) seniorityExecText = "";
+    if(!seniorityNonExecText) seniorityNonExecText = "";
+
+    loadSeniority(
+        seniorityExecText,
+        seniorityNonExecText
+    );
+
+    const dataPrev = parseCSV(shiftTextPrev);
+    const dataCurrent = parseCSV(shiftTextCurrent);
+    const dataNext = parseCSV(shiftTextNext);
+
+    const now = new Date();
+
+    const prevMonthDate = new Date(
+        now.getFullYear(),
+        now.getMonth() - 1,
+        1
+    );
+
+    const currentMonthDate = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        1
+    );
+
+    const nextMonthDate = new Date(
+        now.getFullYear(),
+        now.getMonth() + 1,
+        1
+    );
+
+    data = mergeShiftData(
+        dataPrev,
+        dataCurrent,
+        dataNext,
+        [prevMonthDate, currentMonthDate, nextMonthDate]
+    );
+
+    header = data[0].map(x => x.trim());
+
+    const nonExecPrev = parseCSV(nonExecTextPrev);
+    const nonExecCurrent = parseCSV(nonExecTextCurrent);
+    const nonExecNext = parseCSV(nonExecTextNext);
+
+    nonExecData = mergeShiftData(
+        nonExecPrev,
+        nonExecCurrent,
+        nonExecNext,
+        [prevMonthDate, currentMonthDate, nextMonthDate]
+    );
+
+    nonExecHeader =
+        nonExecData[0]?.map(x => x.trim()) || [];
+
+    if(!header || header.length < 2){
+
+        console.warn(
+            "Shift CSV not available for current period"
+        );
+
+        data = [];
+        header = [];
+    }
+
+    selectedName = "";
+
+    loadHolidayData(holidayText);
+
+    loadTrainingData(trainingText);
+
+    loadNotesData(notesText);
+
+    loadProductionData(
+        productionPlanText,
+        productionTargetText
+    );
+
+    loadIMSData(imsText);
+
+    init();
+
+    loadAlerts();
+
+    saveLastOnlineSync();
+    updateLastSyncDisplay();
+
+})
+
+.catch(err => {
+
+    console.error(
+        "Data load failed:",
+        err
+    );
+
+    document.getElementById("today").innerHTML =
+        "<div style='color:red;font-weight:bold;'>Data load failed (Offline)</div>";
+});
