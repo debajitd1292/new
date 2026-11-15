@@ -24,10 +24,10 @@ const productionTargetUrl =
     baseUrl + "updates/production/production_target.csv?v=" + DATA_VERSION;
 
 const seniorityExecUrl =
-    baseUrl + "seniority/seniority_exec.csv?v=" + DATA_VERSION;
+    baseUrl + "updates/seniority/seniority_exec.csv?v=" + DATA_VERSION;
 
 const seniorityNonExecUrl =
-    baseUrl + "seniority/seniority_nonexec.csv?v=" + DATA_VERSION;
+    baseUrl + "updates/seniority/seniority_nonexec.csv?v=" + DATA_VERSION;
 
 /* =========================================
    DYNAMIC SHIFT MONTH URLS
