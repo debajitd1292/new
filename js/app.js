@@ -609,6 +609,7 @@ function renderCounterPageData() {
     renderOffDayCounter();
     renderEcoLeaveCounter();
     renderDoubleShiftAndTrainingCounter();
+    updateCounterSectionVisibility();
 }
 
 function onCountersCategoryChange() {
