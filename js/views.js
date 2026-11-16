@@ -823,7 +823,6 @@ function renderOffDayCounterMarkup() {
     `).join("");
 
     return `
-        <h4 class="off-day-counter-heading">Rest / OFF Counter</h4>
         <div class="off-day-counter-grid">${itemMarkup}</div>
         <div class="off-day-warning" id="offDayGapWarning" hidden>
             ⚠️ More than 10 working days between OFF days in the current month
@@ -862,14 +861,6 @@ function setOffDayCounterValue(id, count, limit, complete) {
 async function renderOffDayCounter() {
     const box = document.getElementById("offDayCounter");
     if (!box) return;
-
-    const counterCard = box.closest(".card");
-    const mainHeading = counterCard?.querySelector("h3");
-
-    if (mainHeading) {
-        mainHeading.textContent = "Live Counters";
-        mainHeading.classList.add("live-counter-main-heading");
-    }
 
     box.innerHTML = renderOffDayCounterMarkup();
 
