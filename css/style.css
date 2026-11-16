@@ -6129,3 +6129,20 @@ body.dark .update-popup-date {
         height: 34px;
     }
 }
+
+.header-brand .update-bell.has-unread svg {
+    animation: updateBellRing 2.5s ease-in-out infinite;
+}
+
+@keyframes updateBellRing {
+    0%, 85%, 100% { transform: rotate(0); }
+    88% { transform: rotate(12deg); }
+    92% { transform: rotate(-12deg); }
+    96% { transform: rotate(6deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .header-brand .update-bell.has-unread svg {
+        animation: none;
+    }
+}
