@@ -3727,11 +3727,15 @@ body.dark #page-counters .combined-counter-section + .combined-counter-section {
 /* Empty-state message for Counters */
 #page-counters .counter-empty-message {
     padding: 12px 16px;
-    text-align: center;
-    color: #777;
+    text-align: left;
+    color: #64748b;
     font-size: 14px;
-    font-weight: 700;
+    font-weight: 600;
     line-height: 1.4;
+}
+
+body.dark #page-counters .counter-empty-message {
+    color: #cbd5e1;
 }
 
 #page-counters .counter-empty-message[hidden] {
@@ -5787,4 +5791,55 @@ body option {
     box-shadow:
         0 0 5px rgba(212, 175, 55, 0.45),
         inset 0 0 2px rgba(255, 255, 255, 0.25);
+}
+
+/* =========================================================
+   LIVE COUNTERS — MAIN HEADING
+   ========================================================= */
+
+#page-counters .live-counter-main-heading {
+    margin: 0 0 12px;
+    padding: 12px 10px;
+    border-radius: 8px;
+    text-align: left;
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.4;
+    color: #ffffff;
+    background: linear-gradient(135deg, #1f4e79, #163a5f);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+#page-counters .off-day-counter-heading {
+    margin: 0 0 9px;
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.3;
+    color: inherit;
+}
+
+body.dark #page-counters .live-counter-main-heading {
+    color: #ffffff;
+}
+
+/* =========================================================
+   CONTINUOUS COUNTER CARDS — SIMPLE DIVIDER
+   ========================================================= */
+
+/* Remove the gap below Rest / OFF card */
+#page-counters .card:has(#offDayCounter) {
+    margin-bottom: 0;
+}
+
+/* Remove the gap above the combined counter card */
+#page-counters .combined-counter-card {
+    margin-top: 0;
+    border-top: 1px solid #d1d5db;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    padding-top: 12px;
+}
+
+body.dark #page-counters .combined-counter-card {
+    border-top-color: rgba(148, 163, 184, 0.35);
 }
