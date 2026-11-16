@@ -1,639 +1,1236 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PPU OPERATIONS DASHBOARD</title>
+let data = [];
+let selectedName = "";
+let countersSelectedName = "";
+let countersSelectedCategory = "";
+let header = [];
+let nonExecData = [];
+let nonExecHeader = [];
 
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-
-<link rel="manifest" href="manifest.json">
-
-<link rel="apple-touch-icon" href="./images/apple-touch-icon.png">
-
-<meta name="theme-color" content="#0d47a1">
-
-<link rel="stylesheet" href="css/style.css">
-
-</head>
+let seniorityOrder = [];
+let nonExecSeniorityOrder = [];
 
 
-<body>
+const animatedDataKeys = new Set();
 
-<div class="home-top-section">
-    <div class="header">
-        <div class="header-brand">
-            <div class="header-banner">
-                <img src="images/banner.jpg" alt="Polypropylene Plant"
-                     onerror="this.parentElement.style.display='none'">
+function animateDataOnFirstLoad(element, key) {
+    if (!element || animatedDataKeys.has(key)) return;
+
+    animatedDataKeys.add(key);
+
+    element.classList.remove("data-flip-in");
+    void element.offsetWidth;
+    element.classList.add("data-flip-in");
+}
+
+
+const shiftLabels = {
+"A":"A Shift","B":"B Shift","C":"C Shift",
+"G":"General","OFF":"Rest / Off",
+"H":"Holiday",
+"D":"Day Shift","N":"Night Shift",
+"L":"Leave",
+"T":"Training / Tour"
+};
+
+
+function loadSeniority(execText, nonExecText){
+
+    if(execText && execText.trim()){
+        seniorityOrder = execText
+            .split(/\r?\n/)
+            .slice(1)
+            .map(x => x.trim())
+            .filter(Boolean);
+    }
+
+    if(nonExecText && nonExecText.trim()){
+        nonExecSeniorityOrder = nonExecText
+            .split(/\r?\n/)
+            .slice(1)
+            .map(x => x.trim())
+            .filter(Boolean);
+    }
+
+    console.log("Executive seniority loaded:", seniorityOrder);
+    console.log("Non-Executive seniority loaded:", nonExecSeniorityOrder);
+}
+
+
+function sortBySeniority(list){
+    return list.sort((a,b)=>{
+        let ia = seniorityOrder.indexOf(a.trim());
+        let ib = seniorityOrder.indexOf(b.trim());
+        if(ia === -1) ia = 999;
+        if(ib === -1) ib = 999;
+        return ia - ib;
+    });
+}
+
+
+function updatePresentShiftIncharge(){
+
+    const current = getCurrentShiftInfo();
+
+    const element =
+        document.getElementById("presentShiftIncharge");
+
+    if(!element){
+        return;
+    }
+
+    if(!current){
+        element.innerText = "—";
+        return;
+    }
+
+    const shifts = getData(current.date);
+
+    const list = shifts[current.shift] || [];
+
+    if(!list.length){
+        element.innerText = "—";
+        return;
+    }
+
+    const firstExecutive = sortBySeniority(
+        list.map(x => x.name)
+    )[0];
+
+    
+    const newName = firstExecutive || "—";
+    const previousName = element.innerText.trim();
+
+    element.innerText = newName;
+
+    if (
+        newName !== "—" &&
+        previousName === "—"
+    ) {
+        animateDataOnFirstLoad(element, "sic-present");
+    }
+
+}
+
+
+function init(){ 
+
+    initTheme(); 
+
+    document.getElementById("today").innerHTML = "Loading..."; 
+
+    updateHeaderDate();
+
+    let savedCategory = localStorage.getItem("selectedCategory"); 
+    if(savedCategory){ 
+        document.getElementById("categorySelector").value = savedCategory; 
+    } 
+
+    populateNames();
+
+    setTimeout(() => {
+        let savedName = localStorage.getItem("ppu_name");
+        if(savedName){
+            selectedName = savedName;
+            document.getElementById("nameSelector").value = savedName;
+    }
+    
+    refresh();
+    renderNext7Days();
+    syncCounterSelectors();
+    renderCounterPageData();
+
+    }, 0);
+
+    document.getElementById("todayNote").innerHTML = getTodayNote(); 
+   
+
+    renderAlerts();
+    updateTrainingHeader(); 
+    renderTraining();
+
+    calcHoliday(); 
+    updateTodayReason();
+    refresh(); 
+}
+
+
+function refresh(){
+    // Header capsule: follows calendar date, changing at midnight
+    let calendarToday = formatDate(new Date());
+
+    // Operational shift section: retains the 06:00–05:59 boundary
+    const currentShiftInfo = getCurrentShiftInfo();
+    let today = currentShiftInfo ? currentShiftInfo.date : calendarToday;
+
+    let headerShift = selectedName
+        ? (getShift(calendarToday, selectedName) || "-")
+        : "Select Name";
+
+    let shift = selectedName
+        ? (getShift(today, selectedName) || "-")
+        : "Select Name";
+    const [day, month, year] = today.split("-");
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    const [headerDay, headerMonth, headerYear] = calendarToday.split("-");
+
+    const operationalDate = new Date();
+
+    if (operationalDate.getHours() < 6) {
+        operationalDate.setDate(operationalDate.getDate() - 1);
+    }
+
+    document.getElementById("todayTitle").innerText =
+        `Operational Shift for ${monthNames[operationalDate.getMonth()]} ${operationalDate.getDate()}, ${operationalDate.getFullYear()}`;
+
+    let badge = document.getElementById("todayShiftBadge");
+
+    if (!selectedName) {
+        badge.innerText = "—";
+    } else {
+        badge.innerText = headerShift;
+    }
+
+    badge.className = "badge";
+
+    if (!selectedName) {
+        badge.classList.add("no-name-selected");
+    }
+
+    if (headerShift && headerShift !== "-" && headerShift !== "Select Name") {
+
+        const shiftLetters = (headerShift.match(/[ABC]/g) || [])
+            .filter((v, i, a) => a.indexOf(v) === i)
+            .sort()
+            .join("");
+
+        if (shiftLetters.length === 2) {
+            badge.classList.add("SHIFT-" + shiftLetters);
+        } else if (shiftLetters.length === 3) {
+            badge.classList.add("SHIFT-" + shiftLetters);
+        } else {
+            let primary;
+
+            if (headerShift.includes("C")) primary = "C";
+            else if (headerShift.includes("B")) primary = "B";
+            else if (headerShift.includes("A")) primary = "A";
+            else primary = headerShift;
+
+            if (primary === "O") primary = "OFF";
+
+            badge.classList.add(primary);
+        }
+    }
+
+
+    render("today", today);
+
+    updatePresentShiftIncharge();
+
+    renderProductionPlan();
+}
+
+
+function render(id,date){
+
+    console.log("Render called for:", id, date);
+    let box=document.getElementById(id);
+    box.innerHTML="";
+
+    let shifts = (header.indexOf(date) === -1) ? {} : getData(date);
+
+    if(Object.keys(shifts).length === 0){
+
+    let msg = (id === "today")
+        ? "Shift schedule is not available for today"
+        : "Shift schedule is not available for selected date";
+
+    box.innerHTML += `<div style="color:#777;font-weight:bold; margin-bottom:10px;">
+        ${msg}
+        </div>`;
+    }
+
+    let hasExec = Object.values(shifts).some(arr => arr.length > 0);
+
+    if(hasExec){
+    box.innerHTML += `<div class="section-header exec-header">Executive</div>`;
+    }
+
+    /* MAIN */
+    ["A","B","C","G","OFF","H","L","T"].forEach(s=>{
+
+    let list=shifts[s]||[];
+    if(list.length === 0) return;
+
+    list = sortBySeniority(list.map(x=>x.name))
+       .map(n => list.find(x=>x.name===n));
+
+    let alert=(["A","B","C"].includes(s)&&list.length<=2)?" ❗":"";
+
+    let chips=list.map(obj=>{
+    let sel=(selectedName && obj.name===selectedName)?"selected":"";
+    let multi=obj.multi?" ❕":"";
+    let active = "";
+    let current = getCurrentShiftInfo();
+
+    if(current && s === current.shift && date === current.date){
+        active = "active-shift";
+    }
+
+    return `<span class="chip ${s} ${sel} ${active}">${getFirstName(obj.name)}${multi}</span>`;
+        }).join("");
+
+    let activeClass = "";
+    let current = getCurrentShiftInfo();
+
+    if(current && s === current.shift && date === current.date){
+        activeClass = "shift-active-box";
+    }
+
+    box.innerHTML += `
+        <div class="${activeClass}">
+        <div class="shift-title">${shiftLabels[s]} (${list.length})${alert}</div>
+        ${chips || "-"}
+    </div>`;
+    });
+
+    /* D N */
+    ["D","N"].forEach(s=>{
+
+    let list=shifts[s]||[];
+        if(list.length===0) return;
+
+    list = sortBySeniority(list.map(x=>x.name))
+       .map(n => list.find(x=>x.name===n));
+
+    let chips=list.map(obj=>{
+    let sel=(selectedName && obj.name===selectedName)?"selected":"";
+    let multi=obj.multi?" ❕":"";
+    let active = "";
+    let current = getCurrentShiftInfo();
+
+    if(current && s === current.shift && date === current.date){
+        active = "active-shift";
+    }
+
+    return `<span class="chip ${s} ${sel} ${active}">${getFirstName(obj.name)}${multi}</span>`;
+        }).join("");
+
+    box.innerHTML+=`<div class="shift-title">${shiftLabels[s]} (${list.length})</div>${chips}`;
+    });
+
+    // ================= NON-EXEC (FIXED - SINGLE RENDER) =================
+
+    let nonExecShifts = (nonExecHeader.indexOf(date) === -1) ? {} : getNonExecData(date);
+
+    let hasNonExec = Object.values(nonExecShifts).some(arr => arr.length > 0);
+
+    if(hasNonExec){
+
+    box.innerHTML += `<hr><div class="section-header nonexec-header">Non-Executive</div>`;
+
+    ["A","B","C","G","OFF","H","L","T","D","N"].forEach(s=>{
+
+        let list = nonExecShifts[s] || [];
+        if(list.length === 0) return;
+
+        list = list.sort((a,b)=>{
+            let ia = nonExecSeniorityOrder.indexOf(a.name.trim());
+	    let ib = nonExecSeniorityOrder.indexOf(b.name.trim());
+            if(ia === -1) ia = 999;
+            if(ib === -1) ib = 999;
+            return ia - ib;
+        });
+
+        let alert = (["A","B","C"].includes(s) && list.length <= 2) ? " ❗" : "";
+        let chips = list.map(obj=>{
+            let sel=(selectedName && obj.name===selectedName)?"selected":"";
+            let multi=obj.multi?" ❕":"";
+            return `<span class="chip ${s} ${sel}">${getFirstName(obj.name)}${multi}</span>`;
+        }).join("");
+
+        let activeClass = "";
+    let current = getCurrentShiftInfo();
+
+    if(current && s === current.shift && date === current.date){
+    activeClass = "shift-active-box";
+    }
+
+    box.innerHTML += `
+    <div class="${activeClass}">
+    <div class="shift-title">${shiftLabels[s]} (${list.length})${alert}</div>
+    ${chips}
+    </div>`;
+        });
+    }
+}
+
+
+function autoRefreshData(){
+
+    console.log("🔄 Auto refresh triggered");
+
+    updateShiftUrls();
+
+    startSyncTracking();
+
+    Promise.all([
+        fetchCSV(shiftUrlPrev, true),
+        fetchCSV(shiftUrl),
+        fetchCSV(shiftUrlNext, true),
+        fetchCSV(holidayUrl, true),
+        fetchCSV(notesUrl, true),
+        fetchCSV(trainingUrl, true),
+        fetchCSV(productionPlanUrl, true),
+        fetchCSV(productionTargetUrl, true),
+        fetchCSV(nonExecUrlPrev, true),
+        fetchCSV(nonExecUrl),
+        fetchCSV(nonExecUrlNext, true),
+        fetchCSV(seniorityExecUrl, true),
+        fetchCSV(seniorityNonExecUrl, true),
+        fetchCSV(alertsUrl, true),
+        fetchCSV(imsUrl, true)
+    ])
+
+    .then(([
+        shiftTextPrev,
+        shiftTextCurrent,
+        shiftTextNext,
+        holidayText,
+        notesText,
+        trainingText,
+        productionPlanText,
+        productionTargetText,
+        nonExecTextPrev,
+        nonExecTextCurrent,
+        nonExecTextNext,
+        seniorityExecText,
+        seniorityNonExecText,
+        alertsText,
+        imsText
+    ]) => {
+
+        updateHeaderDate();
+
+        loadSeniority(
+            seniorityExecText,
+            seniorityNonExecText
+        );
+
+
+if(alertsText !== undefined){
+
+    alertsData = parseCSV(alertsText)
+        .slice(1)
+        .map(row => {
+
+            return {
+                from: row[0]?.trim(),
+                to: row[1]?.trim(),
+                repeat: row[2]?.trim(),
+                text: row[3]?.trim()
+            };
+
+        })
+        .filter(r =>
+            r.from &&
+            r.to &&
+            r.repeat &&
+            r.text
+        );
+
+    }
+
+
+        
+	const dataPrev = parseCSV(shiftTextPrev);
+	const dataCurrent = parseCSV(shiftTextCurrent);
+	const dataNext = parseCSV(shiftTextNext);
+
+	const currentMonthDate = new Date();
+	currentMonthDate.setDate(1);
+	currentMonthDate.setHours(0, 0, 0, 0);
+
+	const prevMonthDate = new Date(
+    		currentMonthDate.getFullYear(),
+    		currentMonthDate.getMonth() - 1,
+    		1
+	);
+
+	const nextMonthDate = new Date(
+    		currentMonthDate.getFullYear(),
+    		currentMonthDate.getMonth() + 1,
+    		1
+	);
+
+	// Executive shift data
+	data = mergeShiftData(
+   		dataPrev,
+    		dataCurrent,
+    		dataNext,
+    		[prevMonthDate, currentMonthDate, nextMonthDate]
+	);
+
+	header = data[0]?.map(x => x.trim()) || [];
+
+	loadHolidayData(holidayText);
+
+	loadTrainingData(trainingText);
+
+	loadProductionData(
+   		productionPlanText,
+    		productionTargetText
+	);
+
+	loadNotesData(notesText);
+
+	if (imsText !== undefined && imsText !== null) {
+    		loadIMSData(imsText);
+	}
+
+	// Non-executive shift data
+	const nonExecPrev = parseCSV(nonExecTextPrev);
+	const nonExecCurrent = parseCSV(nonExecTextCurrent);
+	const nonExecNext = parseCSV(nonExecTextNext);
+
+		nonExecData = mergeShiftData(
+    		nonExecPrev,
+    		nonExecCurrent,
+    		nonExecNext,
+    		[prevMonthDate, currentMonthDate, nextMonthDate]
+	);
+
+	nonExecHeader =
+    		nonExecData[0]?.map(x => x.trim()) || [];
+
+	document.getElementById("todayNote").innerHTML =
+    		getTodayNote();
+
+
+
+        renderAlerts();
+        updateTrainingHeader();
+        renderTraining();
+
+        refresh();
+        renderNext7Days();
+
+        if(document.getElementById("datePicker").value){
+            renderSelected();
+        }
+
+        calcHoliday();
+        updateTodayReason();
+
+        console.log("✅ Data refreshed successfully");
+
+        saveLastOnlineSync();
+        updateLastSyncDisplay();
+
+    })
+
+    .catch(err => {
+
+        console.error("Auto refresh failed:", err);
+
+        const status = document.getElementById("todayNote");
+
+        if(status){
+        status.innerText = "";
+        }
+
+    });
+}
+
+
+/* ===== AUTOMATIC DATA SYNC ===== */
+
+// Refresh dashboard data every 2 minutes
+setInterval(() => {
+    if (navigator.onLine) {
+        autoRefreshData();
+    }
+}, 2 * 60 * 1000);
+
+// Refresh when internet connectivity is restored
+window.addEventListener("online", () => {
+    autoRefreshData();
+});
+
+
+/* ===== INDEPENDENT COUNTERS PAGE SELECTORS ===== */
+
+function syncCounterSelectors() {
+    const mainCategory = document.getElementById("categorySelector");
+    const mainName = document.getElementById("nameSelector");
+    const counterCategory = document.getElementById("countersCategorySelector");
+    const counterName = document.getElementById("countersNameSelector");
+
+    if (!mainCategory || !mainName || !counterCategory || !counterName) return;
+
+    // Home selection is the source when Home changes.
+    counterCategory.value = mainCategory.value;
+    counterName.innerHTML = mainName.innerHTML;
+    counterName.value = mainName.value;
+
+    countersSelectedCategory = counterCategory.value;
+    countersSelectedName = counterName.value;
+}
+
+
+function populateCounterNames() {
+    const category = document.getElementById("countersCategorySelector")?.value;
+    const sel = document.getElementById("countersNameSelector");
+
+    if (!sel) return;
+
+    sel.innerHTML = "";
+    sel.add(new Option("Select Name", ""));
+
+    if (!category) return;
+
+    let names = [];
+
+    if (category === "exec") {
+        names = [...seniorityOrder];
+    } else {
+        names = nonExecSeniorityOrder
+            .filter(n => n && !/\bDMBI\b/i.test(n));
+    }
+
+    names.forEach(name =>
+        sel.add(new Option(getFirstName(name), name))
+    );
+}
+
+
+function renderCounterPageData() {
+    renderOffDayCounter();
+    renderEcoLeaveCounter();
+    renderDoubleShiftAndTrainingCounter();
+    updateCounterSectionVisibility();
+}
+
+function onCountersCategoryChange() {
+    const category = document.getElementById("countersCategorySelector")?.value || "";
+
+    countersSelectedCategory = category;
+    countersSelectedName = "";
+
+    populateCounterNames();
+    renderCounterPageData();
+}
+
+function onCountersNameChange() {
+    const counterName = document.getElementById("countersNameSelector");
+
+    countersSelectedCategory =
+        document.getElementById("countersCategorySelector")?.value || "";
+
+    countersSelectedName = counterName?.value || "";
+
+    renderCounterPageData();
+}
+
+
+
+/* ===== DASHBOARD PAGE NAVIGATION ===== */
+
+function navigateToPage(page, addHistory = true) {
+    const validPages = [
+        "home",
+        "shifts",
+        "counters",
+        "plant",
+        "production",
+        "training",
+        "more",
+        "ims",
+        "calculator",
+        "intercoms",
+        "others"
+    ];
+
+    if (!validPages.includes(page)) {
+        return;
+    }
+
+    if (page !== "more") {
+        sessionStorage.setItem("lastDashboardPage", page);
+    }
+
+    const targetPage = document.getElementById("page-" + page);
+
+    if (!targetPage) {
+        console.error("Dashboard page not found:", page);
+        return;
+    }
+
+    document.querySelectorAll(".app-page").forEach(function (section) {
+        section.classList.toggle("active", section === targetPage);
+    });
+
+    const activeTab = page;
+
+    document.querySelectorAll(".bottom-nav .nav-item").forEach(function (item) {
+        const isActive = item.dataset.page === activeTab;
+
+        item.classList.toggle("active", isActive);
+
+        if (isActive) {
+            item.setAttribute("aria-current", "page");
+        } else {
+            item.removeAttribute("aria-current");
+        }
+    });
+
+    revealActiveNavItem();
+    updateNavArrows();
+
+    if (addHistory) {
+        history.pushState(
+            { dashboardPage: page },
+            "",
+            "#" + page
+        );
+    }
+
+    window.scrollTo(0, 0);
+}
+
+/* ===== HORIZONTAL BOTTOM NAVIGATION ===== */
+
+function updateNavArrows() {
+    const scroller = document.getElementById("navScroll");
+    const leftArrow = document.getElementById("navArrowLeft");
+    const rightArrow = document.getElementById("navArrowRight");
+
+    if (!scroller || !leftArrow || !rightArrow) return;
+
+    const maxScroll = scroller.scrollWidth - scroller.clientWidth;
+    const canScroll = maxScroll > 2;
+
+    leftArrow.classList.toggle(
+        "is-visible",
+        canScroll && scroller.scrollLeft > 2
+    );
+
+    rightArrow.classList.toggle(
+        "is-visible",
+        canScroll && scroller.scrollLeft < maxScroll - 2
+    );
+}
+
+
+function revealActiveNavItem() {
+    const scroller = document.getElementById("navScroll");
+    const activeItem = document.querySelector(
+        "#navScroll .nav-item.active"
+    );
+
+    if (!scroller || !activeItem) return;
+
+    const itemLeft = activeItem.offsetLeft;
+    const itemRight = itemLeft + activeItem.offsetWidth;
+    const visibleLeft = scroller.scrollLeft;
+    const visibleRight = visibleLeft + scroller.clientWidth;
+
+    if (itemLeft < visibleLeft) {
+        scroller.scrollTo({
+            left: itemLeft,
+            behavior: "smooth"
+        });
+    } else if (itemRight > visibleRight) {
+        scroller.scrollTo({
+            left: itemRight - scroller.clientWidth,
+            behavior: "smooth"
+        });
+    }
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+    const scroller = document.getElementById("navScroll");
+    const leftArrow = document.getElementById("navArrowLeft");
+    const rightArrow = document.getElementById("navArrowRight");
+
+    if (!scroller || !leftArrow || !rightArrow) return;
+
+    leftArrow.addEventListener("click", function () {
+        scroller.scrollBy({
+            left: -Math.max(140, scroller.clientWidth * 0.7),
+            behavior: "smooth"
+        });
+    });
+
+    rightArrow.addEventListener("click", function () {
+        scroller.scrollBy({
+            left: Math.max(140, scroller.clientWidth * 0.7),
+            behavior: "smooth"
+        });
+    });
+
+    scroller.addEventListener("scroll", updateNavArrows);
+    window.addEventListener("resize", updateNavArrows);
+
+    updateNavArrows();
+});
+
+window.addEventListener("popstate", function () {
+    navigateToPage("home", false);
+    history.replaceState({ dashboardPage: "home" }, "", "#home");
+});
+
+document.addEventListener("DOMContentLoaded", function () {
+    const validPages = [
+        "home",
+        "shifts",
+        "counters",
+        "plant",
+        "production",
+        "training",
+        "ims",
+        "calculator",
+        "intercoms",
+        "others"
+    ];
+
+    const IDLE_LIMIT = 15 * 60 * 1000; // 15 minutes
+
+    const savedPage = sessionStorage.getItem("lastDashboardPage");
+    const lastActivity = Number(
+        sessionStorage.getItem("dashboardLastActivity") || Date.now()
+    );
+
+    const isIdle = Date.now() - lastActivity >= IDLE_LIMIT;
+
+    const initialPage = isIdle
+        ? "home"
+        : (validPages.includes(savedPage) ? savedPage : "home");
+
+    sessionStorage.setItem("dashboardLastActivity", Date.now());
+
+    navigateToPage(initialPage, false);
+    syncCounterSelectors();
+
+    const mainCategory = document.getElementById("categorySelector");
+    const mainName = document.getElementById("nameSelector");
+
+    mainCategory?.addEventListener("change", () => {
+        syncCounterSelectors();
+        renderCounterPageData();
+    });
+
+    mainName?.addEventListener("change", () => {
+        syncCounterSelectors();
+        renderCounterPageData();
+    });
+
+    history.replaceState(
+        { dashboardPage: initialPage },
+        "",
+        "#" + initialPage
+    );
+
+});
+
+// Remember the selected calculator after refresh
+window.addEventListener("load", function () {
+    const calculatorType = document.getElementById("calculatorType");
+
+    if (!calculatorType) return;
+
+    const savedCalculator = localStorage.getItem("lastCalculatorType");
+
+    if (
+        savedCalculator &&
+        Array.from(calculatorType.options).some(
+            option => option.value === savedCalculator
+        )
+    ) {
+        calculatorType.value = savedCalculator;
+        calculatorType.dispatchEvent(
+            new Event("change", { bubbles: true })
+        );
+    }
+
+    calculatorType.addEventListener("change", function () {
+        localStorage.setItem(
+            "lastCalculatorType",
+            calculatorType.value
+        );
+    });
+});
+
+/* ===== HEADER LOGO — NAVIGATE TO HOME ===== */
+
+document.addEventListener("DOMContentLoaded", function () {
+    const homeLogo = document.getElementById("homeLogo");
+
+    if (!homeLogo) return;
+
+    homeLogo.style.cursor = "pointer";
+
+    homeLogo.addEventListener("click", function () {
+        navigateToPage("home");
+    });
+
+    homeLogo.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            navigateToPage("home");
+        }
+    });
+});
+
+
+/* ===== AUTO RETURN TO HOME AFTER 15 MINUTES OF INACTIVITY ===== */
+
+(function () {
+    const IDLE_LIMIT = 15 * 60 * 1000;
+    let idleTimer;
+
+    function returnHomeIfIdle() {
+        const lastActivity = Number(
+            sessionStorage.getItem("dashboardLastActivity") || Date.now()
+        );
+
+        const elapsed = Date.now() - lastActivity;
+
+        if (elapsed >= IDLE_LIMIT) {
+            clearTimeout(idleTimer);
+
+            sessionStorage.setItem(
+                "dashboardLastActivity",
+                Date.now()
+            );
+
+            navigateToPage("home");
+            return;
+        }
+
+        idleTimer = setTimeout(
+            returnHomeIfIdle,
+            IDLE_LIMIT - elapsed
+        );
+    }
+
+    function resetIdleTimer() {
+        sessionStorage.setItem(
+            "dashboardLastActivity",
+            Date.now()
+        );
+
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(
+            returnHomeIfIdle,
+            IDLE_LIMIT
+        );
+    }
+
+    // User activity restarts the 15-minute timer.
+    ["click", "touchstart", "pointerdown", "keydown", "scroll"]
+        .forEach(eventName => {
+            document.addEventListener(
+                eventName,
+                resetIdleTimer,
+                { passive: true }
+            );
+        });
+
+    // Check again when returning to the browser tab.
+    document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) {
+            returnHomeIfIdle();
+        }
+    });
+
+    // Start using the previously recorded activity time.
+    returnHomeIfIdle();
+})();
+
+
+/* =========================================================
+   CSV UPDATE NOTIFICATIONS
+   ========================================================= */
+
+(function () {
+
+    const NOTIFICATION_URL = "./updates/notifications.csv";
+
+    // Read status is based on message text, not CSV ID.
+    const STORAGE_KEY = "ppuReadNotificationMessagesV2";
+
+    let notifications = [];
+
+    function normalizeMessage(message) {
+        return String(message || "")
+            .trim()
+            .replace(/\s+/g, " ")
+            .toLowerCase();
+    }
+
+    function getReadNotifications() {
+        try {
+            const saved = JSON.parse(
+                localStorage.getItem(STORAGE_KEY) || "[]"
+            );
+            return Array.isArray(saved) ? saved : [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    function saveReadNotifications(keys) {
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify([...new Set(keys)])
+        );
+    }
+
+    // Convert DD-MM-YYYY into a comparable date.
+    function notificationDateValue(dateText) {
+        const match = String(dateText || "").match(
+            /^(\d{2})-(\d{2})-(\d{4})$/
+        );
+
+        if (!match) return 0;
+
+        return new Date(
+            Number(match[3]),
+            Number(match[2]) - 1,
+            Number(match[1])
+        ).getTime();
+    }
+
+    // Keep only the latest entry for identical messages.
+    function removeDuplicateNotifications(items) {
+
+        const latest = new Map();
+
+        items.forEach((item, index) => {
+
+            const key = normalizeMessage(item.message);
+            const previous = latest.get(key);
+
+            if (
+                !previous ||
+                notificationDateValue(item.date) >=
+                notificationDateValue(previous.date)
+            ) {
+                latest.set(key, {
+                    ...item,
+                    originalIndex: index
+                });
+            }
+        });
+
+        return [...latest.values()]
+            .sort((a, b) => a.originalIndex - b.originalIndex);
+    }
+
+    function getUnreadNotifications() {
+
+        const readKeys = getReadNotifications();
+
+        return notifications.filter(item =>
+            !readKeys.includes(normalizeMessage(item.message))
+        );
+    }
+
+    function renderNotificationBell() {
+
+        const bell = document.getElementById("updateBell");
+        const count = document.getElementById("updateBellCount");
+
+        if (!bell || !count) return;
+
+        const unread = getUnreadNotifications();
+
+        bell.hidden = unread.length === 0;
+
+        count.textContent = unread.length > 99
+            ? "99+"
+            : unread.length;
+
+    }
+
+    function renderNotificationPopup() {
+
+        const list = document.getElementById("updatePopupList");
+
+        if (!list) return;
+
+        const unread = getUnreadNotifications();
+
+        if (!unread.length) {
+            list.innerHTML = `
+                <div class="update-popup-empty">
+                    No new notifications
+                </div>
+            `;
+            return;
+        }
+
+        list.innerHTML = unread.map(item => `
+            <div class="update-popup-item">
+
+                <span class="notification-check">✓</span>
+
+                <div class="notification-content">
+                    ${escapeNotificationText(item.message)}
+
+                    <span class="update-popup-date">
+                        ${escapeNotificationText(item.date)}
+                    </span>
+                </div>
+
             </div>
+        `).join("");
 
-            <img src="images/logo.png"
-                class="logo"
-                id="homeLogo"
-                alt="BCPL Logo — Go to Home"
-                role="button"
-                tabindex="0"
-                title="Go to Home"
-                onload="this.style.opacity=1; this.style.transform='scale(1)'">
+    }
 
-            <div class="header-titles">
-                <h3>OPERATIONS DASHBOARD</h3>
-                <div class="header-subtitle">Polypropylene Unit • BCPL</div>
-            </div>
-        </div>
-    </div>
-</div>
+    function escapeNotificationText(value) {
+        return String(value || "").replace(/[&<>"']/g, char => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+        })[char]);
+    }
 
-<div class="app-page active" id="page-home">
+    function markNotificationsAsRead() {
 
+        const readKeys = getReadNotifications();
 
-<div class="today-weather-row">
-    <div class="today-weather-summary today-summary-new">
-        <div class="today-date-shift-row">
+        const unreadKeys = getUnreadNotifications()
+            .map(item => normalizeMessage(item.message));
 
-    	    <button type="button" id="updateBell"
-                class="update-bell" aria-label="New updates"
-                hidden>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
-                <path d="M10 21h4"></path>
-            </svg>
-        <span id="updateBellCount" class="update-bell-count"></span>
-    </button>
+        saveReadNotifications([
+            ...readKeys,
+            ...unreadKeys
+        ]);
 
-    <div id="todayDate"></div>
+    }
 
-    <div class="badge" id="todayShiftBadge">Loading...</div>
+    function showNotificationPopup() {
 
-  </div>
+        const overlay = document.getElementById(
+            "updatePopupOverlay"
+        );
 
-        <div id="todayReason"></div>
-    </div>
-</div>
+        if (!overlay) return;
 
-
-<div class="holiday-cards">
-    <div class="holiday-card">
-        <div class="holiday-title">Next GH</div>
-        <div id="nextGH" class="holiday-date">—</div>
-    </div>
-
-    <div class="holiday-card">
-        <div class="holiday-title">Next RH</div>
-        <div id="nextRH" class="holiday-date">—</div>
-    </div>
-</div>
-
-<div class="info-bar">
-
-    <div class="info-row">
-        <span class="info-label">Head of Department</span>
-        <span class="info-name">Sh. Pradeep Rawat</span>
-    </div>
+        renderNotificationPopup();
 
-    <div class="info-row">
-        <span class="info-label">Area In-charge</span>
-        <span class="info-name">Sh. Manoj Kumar Haloi</span>
-    </div>
-
-    <div class="info-row">
-        <span class="info-label">Shift In-charge (Current)</span>
-        <span class="info-name" id="presentShiftIncharge">—</span>
-    </div>
+        overlay.hidden = false;
 
-</div>
+        markNotificationsAsRead();
 
+        renderNotificationBell();
 
-<div id="todayNote" class="today-message"></div>
+    }
 
-<div id="alertSection" style="margin:10px;"></div>
+    function closeNotificationPopup() {
 
-<div class="card">
+        const overlay = document.getElementById(
+            "updatePopupOverlay"
+        );
 
-    <div class="row">
-    <div class="field">
-        <label>Select Category:</label>
-        <select id="categorySelector" onchange="onCategoryChange()">
-            <option value="" disabled selected>Select Category</option>
-            <option value="exec">Executive</option>
-            <option value="nonexec">Non-Executive</option>
-        </select>
-    </div>
+        if (overlay) overlay.hidden = true;
 
-    <div class="field">
-        <label>Select Name:</label>
-        <select id="nameSelector" onchange="onNameChange()"></select>
-    </div>
-</div>
+    }
 
-</div>
+    async function loadNotifications() {
 
-<div class="card">
+        try {
 
-    <h3 id="todayTitle">Today's Shift</h3>
-    <div id="today"></div>
-</div>
+            const response = await fetch(
+                NOTIFICATION_URL + "?v=" + Date.now(),
+                { cache: "no-store" }
+            );
 
-<p class="shift-disclaimer">
-    ⚠️ DISCLAIMER: Information displayed here is for Reference Purposes Only
-    and may occasionally be incorrect or unavailable. Always refer to the
-    Original Shift Schedule / Instructions for accurate and Official Information
-</p>
+            if (!response.ok) {
+                throw new Error("Notification CSV unavailable");
+            }
 
-</div>
+            const csvText = await response.text();
+            const rows = parseCSV(csvText);
 
-<div class="app-page" id="page-shifts">
+            const loaded = rows.slice(1)
+                .filter(row => row[0] && row[3])
+                .map(row => ({
+                    id: row[0].trim(),
+                    date: row[1]?.trim() || "",
+                    message: row[3]?.trim() || ""
+                }));
 
-  <div class="card">
-      <h3 id="shiftCalendarHeading">My Shift Schedule</h3>
-      <div id="next7Days" class="next7-container"></div>
-  </div>
+            notifications = removeDuplicateNotifications(loaded);
 
-  <!-- Select Date & View Shift -->
-  <div class="card">
-    <h3 id="selectedTitle">Select Date & View Team Shift</h3>
-    <label>Select Date:</label>
-    <input type="date" id="datePicker" onchange="renderSelected()">
-    <div id="selected" style="margin-top:10px;"></div>
-  </div>
+            renderNotificationBell();
 
-</div>
+            // If popup is already open, refresh its contents too.
+            const overlay = document.getElementById(
+                "updatePopupOverlay"
+            );
 
-<div class="app-page" id="page-counters">
+            if (overlay && !overlay.hidden) {
+                renderNotificationPopup();
+                markNotificationsAsRead();
+                renderNotificationBell();
+            }
 
-  <div class="card">
+        } catch (error) {
 
-    <div class="row">
-      <div class="field">
-        <label for="countersCategorySelector">Select Category:</label>
-        <select id="countersCategorySelector" onchange="onCountersCategoryChange()">
-          <option value="" disabled>Select Category</option>
-          <option value="exec">Executive</option>
-          <option value="nonexec">Non-Executive</option>
-        </select>
-      </div>
+            console.warn(
+                "Notification loading failed:",
+                error
+            );
 
-      <div class="field">
-        <label for="countersNameSelector">Select Name:</label>
-        <select id="countersNameSelector" onchange="onCountersNameChange()">
-          <option value="">Select Name</option>
-        </select>
-      </div>
-    </div>
-  </div>
+        }
 
-    <div id="counterEmptyMessage" class="counter-empty-message" hidden>
-    Select Name in Home page to view Counter data
-  </div>
+    }
 
-  <div class="card live-counters-card">
+    function initNotificationSystem() {
 
-    <h3 class="live-counter-main-heading">Counter Summary</h3>
+        document.getElementById("updateBell")
+            ?.addEventListener("click", showNotificationPopup);
 
-    <div class="live-counter-section">
-      <h4 class="off-day-counter-heading">Rest / OFF Counter</h4>
-      <div id="offDayCounter" class="off-day-counter" aria-live="polite"></div>
-    </div>
+        document.getElementById("closeUpdatePopup")
+            ?.addEventListener("click", closeNotificationPopup);
 
-    <hr class="live-counter-divider">
+        document.getElementById("updatePopupOverlay")
+            ?.addEventListener("click", function (event) {
+                if (event.target === this) {
+                    closeNotificationPopup();
+                }
+            });
 
-    <div id="ecoLeaveCounter" class="eco-leave-counter" aria-live="polite"></div>
+        loadNotifications();
 
-  </div>
+        // Refresh notifications every 2 minutes.
+        setInterval(loadNotifications, 2 * 60 * 1000);
 
+        // Refresh when internet connectivity returns.
+        window.addEventListener("online", loadNotifications);
 
-</div>
+        // Refresh when the user returns to the dashboard.
+        document.addEventListener("visibilitychange", function () {
+            if (!document.hidden) {
+                loadNotifications();
+            }
+        });
 
+    }
 
-<div class="app-page" id="page-plant">
-  <div class="card plant-page-card">
-    <h3 id="plantHeader">Major Equipment Status</h3>
+    if (document.readyState === "loading") {
+        document.addEventListener(
+            "DOMContentLoaded",
+            initNotificationSystem
+        );
+    } else {
+        initNotificationSystem();
+    }
 
-    <div id="plantMajorCards" class="plant-major-grid"></div>
-
-    <div id="plantFpuCards" class="plant-fpu-grid"></div>
-
-    <div id="plantDataNote" class="plant-data-note" role="status"></div>
-  </div>
-</div>
-
-<div class="app-page" id="page-production">
-
-<div class="card production-grade-card">
-    <h3>Current Production Grade</h3>
-    <div id="currentProductionGrade">Loading...</div>
-    <div id="productionGradeSince" class="production-grade-since"></div>
-</div>
-
-<div class="info-card production-card">
-
-    <h3 id="productionPlanHeader">Production Plan for <span id="productionPlanMonth">—</span></h3>
-
-    <div id="productionTargets" class="production-targets">
-    </div>
-
-    <div id="productionEmpty" class="production-empty">
-    Production plan not received yet
-</div>
-
-<div class="production-table-wrap" id="productionTableWrap">
-
-    <table class="production-table">
-
-        <thead>
-            <tr>
-                <th>Duration</th>
-                <th>Days</th>
-                <th>Grade</th>
-            </tr>
-        </thead>
-
-        <tbody id="productionPlanBody">
-        </tbody>
-
-    </table>
-
-</div>
-
-</div>
-
-<!-- GRADE SPECIFICATIONS -->
-<div class="card grade-spec-card">
-
-    <h3 class="grade-spec-heading">Grade Specifications</h3>
-
-    <label for="gradeSpecificationSelect">
-        Select Grade
-    </label>
-
-    <select id="gradeSpecificationSelect">
-        <option value="">Select Grade</option>
-        <option value="WH034N">WH034N</option>
-        <option value="WH040N">WH040N</option>
-        <option value="IH120N">IH120N</option>
-        <option value="FH110N">FH110N</option>
-    </select>
-
-    <div id="gradeSpecificationContent" class="production-empty grade-spec-content" aria-live="polite">
-        Select a grade to view its specifications
-    </div>
-
-</div>
-
-</div>
-
-<div class="app-page" id="page-training">
-<div class="card"><h3 id="trainingHeader">Training Schedule</h3>
-    <div id="trainingSection">Loading...</div>
-</div>
-
-</div>
-
-<div class="app-page" id="page-more">
-  <div class="card">
-    <h3>More</h3>
-    <div class="more-menu">
-      <button type="button" onclick="navigateToPage('ims')">
-        IMS Targets
-      </button>
-      <button type="button" onclick="navigateToPage('others')">
-        Others & Settings
-      </button>
-    </div>
-  </div>
-</div>
-
-
-<div class="app-page" id="page-ims">
-  <div class="card ims-card">
-    <h3 id="imsHeader">IMS Targets</h3>
-    <div id="imsSections">
-      Loading IMS data...
-    </div>
-  </div>
-</div>
-
-
-
-<div class="app-page" id="page-calculator">
-  <div class="card calculator-card">
-    <h3 id="calculatorHeader">Calculators</h3>
-
-    <label for="calculatorType">Select Calculator</label>
-    <select id="calculatorType">
-      <option value="propylene-stock">Propylene Pumpable Stock</option>
-    </select>
-
-    <div id="propyleneStockCalculator" class="calculator-form">
-
-      <div class="calculator-input-grid">
-        <div class="calculator-input-group">
-          <label for="sphereALevel">Sphere A Level (mm)</label>
-          <input
-            id="sphereALevel"
-            type="number"
-            inputmode="decimal"
-            min="0"
-            step="any"
-            placeholder="Enter level in mm"
-          >
-        </div>
-
-        <div class="calculator-input-group">
-          <label for="sphereBLevel">Sphere B Level (mm)</label>
-          <input
-            id="sphereBLevel"
-            type="number"
-            inputmode="decimal"
-            min="0"
-            step="any"
-            placeholder="Enter level in mm"
-          >
-        </div>
-
-        <div class="calculator-input-group">
-          <label for="sphereCLevel">Sphere C Level (mm)</label>
-          <input
-            id="sphereCLevel"
-            type="number"
-            inputmode="decimal"
-            min="0"
-            step="any"
-            placeholder="Enter level in mm"
-          >
-        </div>
-      </div>
-
-      <button
-        type="button"
-        id="calculatePropyleneStockBtn"
-        class="calculator-action"
-      >
-        Calculate Stock
-      </button>
-
-      <p id="sphereLevelWarning" class="calculator-description sphere-level-warning">
-        Enter the current levels of the 3 On-spec Propylene spheres
-      </p>
-
-      <div
-        id="propyleneStockResult"
-        class="calculator-result"
-        role="status"
-        aria-live="polite"
-        hidden
-      ></div>
-    </div>
-  </div>
-</div>
-
-<div class="app-page" id="page-intercoms">
-  <div class="card intercom-page-card">
-
-    <div class="intercom-page-title">
-        Important Intercom Contacts
-    </div>
-
-    <div class="intercom-search-wrap">
-      <span class="intercom-search-icon">⌕</span>
-      <input
-        type="search"
-        id="intercomSearch"
-        placeholder="Search category or contact..."
-        autocomplete="off"
-      >
-    </div>
-
-    <div id="intercomCategoryGrid"
-         class="intercom-category-grid"></div>
-
-    <div id="intercomEmptyState"
-         class="intercom-empty-state" hidden>
-      Loading intercom directory...
-    </div>
-
-  </div>
-</div>
-
-
-<div class="app-page" id="page-others">
-  <div class="card settings-card">
-    <h3 id="settingsHeader">Settings &amp; App Info</h3>
-
-    <label for="displayMode">Display Mode</label>
-    <select id="displayMode">
-      <option value="light">Light Mode</option>
-      <option value="dark">Dark Mode</option>
-    </select>
-
-    <div class="settings-details">
-      <h4>App Information</h4>
-      <p><span>Application</span><span>PPU Operations Dashboard</span></p>
-      <p><span>Version</span><span>3.0.0</span></p>
-      <p><span>Developer</span><span>Debajit Das, PPU</span></p>
-      <p><span>Copyright</span><span>© 2026</span></p>
-    </div>
-  </div>
-</div>
-
-<div id="updatePopupOverlay" class="update-popup-overlay" hidden>
-    <section class="update-popup-sheet" role="dialog"
-             aria-modal="true" aria-labelledby="updatePopupTitle">
-
-        <div class="update-popup-header">
-            <h3 id="updatePopupTitle">Recent Updates</h3>
-            <button type="button" id="closeUpdatePopup"
-                    aria-label="Close">×</button>
-        </div>
-
-        <div id="updatePopupList" class="update-popup-list"></div>
-
-    </section>
-</div>
-
-<div id="intercomPopupOverlay">
-  <section id="intercomPopupSheet"
-           role="dialog"
-           aria-modal="true"
-           aria-labelledby="intercomPopupTitle">
-
-    <div class="intercom-popup-grabber"></div>
-
-    <header class="intercom-popup-header">
-      <h2 class="intercom-popup-title"
-          id="intercomPopupTitle"></h2>
-
-      <button type="button"
-              class="intercom-popup-close"
-              aria-label="Close">×</button>
-    </header>
-
-    <div id="intercomPopupList"
-         class="intercom-popup-list"></div>
-
-  </section>
-</div>
-
-<nav class="bottom-nav" id="bottomNav" aria-label="Main navigation">
-
-  <button type="button" class="nav-arrow nav-arrow-left"
-          id="navArrowLeft" aria-label="Scroll navigation left">
-    &#8249;
-  </button>
-
-  <div class="nav-scroll" id="navScroll">
-
-  <button type="button" class="nav-item active" data-page="home"
-          onclick="navigateToPage('home')">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M3 10.5 12 3l9 7.5"></path>
-      <path d="M5.5 9.5V21h13V9.5"></path>
-      <path d="M9 21v-7h6v7"></path>
-    </svg>
-    <span>Home</span>
-  </button>
-
-  <button type="button" class="nav-item" data-page="shifts"
-          onclick="navigateToPage('shifts')">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="3" y="5" width="18" height="16" rx="2"></rect>
-      <path d="M16 3v4M8 3v4M3 10h18"></path>
-      <path d="m8 15 2 2 5-5"></path>
-    </svg>
-    <span>Shifts</span>
-  </button>
-
-
-  <button type="button" class="nav-item" data-page="counters"
-          onclick="navigateToPage('counters')">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="13" r="8"></circle>
-      <path d="M12 9v4l3 2M9 2h6M12 2v3M19 6l1.5-1.5"></path>
-    </svg>
-    <span>Counters</span>
-  </button>  
-
-
-  <button type="button" class="nav-item" data-page="plant"
-          onclick="navigateToPage('plant')">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M8 21V5h8v16M6 5h12M10 2h4M5 21h14"/>
-      <path d="M10 9h4M10 13h4M10 17h4"/>
-      <path d="M16 8h3v5h-3"/>
-    </svg>
-    <span>Plant</span>
-  </button>
-
-  <button type="button" class="nav-item" data-page="production"
-          onclick="navigateToPage('production')">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M3 21V8l6 3V6l6 3V3h6v18Z"></path>
-      <path d="M7 15h2M13 15h2M18 15h1M7 18h2M13 18h2M18 18h1"></path>
-    </svg>
-    <span>Production</span>
-  </button>
-
-  <button type="button" class="nav-item" data-page="training"
-          onclick="navigateToPage('training')">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="m2 8 10-5 10 5-10 5Z"></path>
-      <path d="M6 10v6c3 3 9 3 12 0v-6M22 8v7"></path>
-    </svg>
-    <span>Training</span>
-  </button>
-
-  
-<button type="button" class="nav-item" data-page="ims"
-        onclick="navigateToPage('ims')">
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <circle cx="12" cy="12" r="9"></circle>
-    <circle cx="12" cy="12" r="5"></circle>
-    <circle cx="12" cy="12" r="1"></circle>
-  </svg>
-  <span>IMS</span>
-</button>
-
-
-
-<button type="button" class="nav-item" data-page="calculator"
-        onclick="navigateToPage('calculator')">
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <rect x="5" y="2.5" width="14" height="19" rx="2"></rect>
-    <path d="M8 6h8v4H8zM8 14h1M12 14h1M16 14h.01M8 17.5h1M12 17.5h1M16 17.5h.01"></path>
-  </svg>
-  <span>Calculator</span>
-</button>
-
-
-<button type="button" class="nav-item"
-        data-page="intercoms"
-        onclick="navigateToPage('intercoms')">
-
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M22 16.92v3a2 2 0 0 1-2.18 2
-    19.79 19.79 0 0 1-8.63-3.07
-    19.5 19.5 0 0 1-6-6
-    19.79 19.79 0 0 1-3.07-8.67
-    A2 2 0 0 1 4.11 2h3
-    a2 2 0 0 1 2 1.72
-    c.12.96.36 1.9.72 2.79
-    a2 2 0 0 1-.45 2.11L8.1 9.9
-    a16 16 0 0 0 6 6l1.27-1.27
-    a2 2 0 0 1 2.11-.45
-    c.89.36 1.83.6 2.79.72
-    A2 2 0 0 1 22 16.92Z"></path>
-  </svg>
-
-  <span>Intercoms</span>
-</button>
-
-<button type="button" class="nav-item" data-page="others"
-        onclick="navigateToPage('others')">
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <circle cx="12" cy="12" r="3"></circle>
-    <path d="m19.4 15 .1.1 1.4 1.1-1.5 2.6-1.7-.7a8 8 0 0 1-1.5.9l-.3 1.9h-3l-.3-1.9a8 8 0 0 1-1.5-.9l-1.7.7-1.5-2.6 1.4-1.1a8 8 0 0 1 0-1.8l-1.4-1.1 1.5-2.6 1.7.7a8 8 0 0 1 1.5-.9l.3-1.9h3l.3 1.9a8 8 0 0 1 1.5.9l1.7-.7 1.5 2.6-1.4 1.1a8 8 0 0 1 0 1.7Z" transform="translate(-1 -1) scale(1.05)"></path>
-  </svg>
-  <span>Settings</span>
-</button>
-
-  </div>
-
-  <button type="button" class="nav-arrow nav-arrow-right"
-          id="navArrowRight" aria-label="Scroll navigation right">
-    &#8250;
-  </button>
-
-</nav>
-
-<div class="footer">
-    <div id="lastUpdated"></div>
-</div>
-
-<script src="js/config.js"></script>
-<script src="js/data.js"></script>
-<script src="js/alerts.js"></script>
-<script src="js/production.js"></script>
-<script src="js/grade_specifications.js"></script>
-<script src="js/ims.js"></script>
-<script src="js/holiday.js"></script>
-<script src="js/notes.js"></script>
-<script src="js/training.js"></script>
-<script src="js/theme.js"></script>
-<script src="js/utils.js"></script>
-<script src="js/status.js"></script>
-<script src="js/selection.js"></script>
-<script src="js/shift-data.js"></script>
-<script src="js/views.js"></script>
-<script src="js/loader.js"></script>
-<script src="js/pwa.js"></script>
-<script src="js/app.js"></script>
-<script src="js/plant.js"></script>
-<script src="js/propylene_stock.js"></script>
-<script src="js/additive_composition.js"></script>
-<script src="js/reactor_shutdown.js"></script>
-<script src="js/reactor_startup.js"></script>
-<script src="js/intercoms.js"></script>
-
-</body>
-</html>
+})();
