@@ -948,3 +948,177 @@ document.addEventListener("DOMContentLoaded", function () {
     // Start using the previously recorded activity time.
     returnHomeIfIdle();
 })();
+
+/* =========================================================
+   CSV UPDATE NOTIFICATIONS
+   ========================================================= */
+
+(function () {
+
+    const NOTIFICATION_URL =
+        "./updates/notifications.csv";
+
+    const STORAGE_KEY = "ppuReadNotificationsV1";
+
+    let notifications = [];
+
+    function getReadNotifications() {
+        try {
+            return JSON.parse(
+                localStorage.getItem(STORAGE_KEY) || "[]"
+            );
+        } catch (error) {
+            return [];
+        }
+    }
+
+    function saveReadNotifications(ids) {
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify(ids)
+        );
+    }
+
+    function renderNotificationBell() {
+
+        const bell = document.getElementById("updateBell");
+        const count = document.getElementById("updateBellCount");
+
+        if (!bell || !count) return;
+
+        const readIds = getReadNotifications();
+
+        const unread = notifications.filter(
+            item => !readIds.includes(item.id)
+        );
+
+        if (!unread.length) {
+            bell.hidden = true;
+            return;
+        }
+
+        bell.hidden = false;
+        bell.classList.add("has-unread");
+
+        count.textContent = unread.length > 99
+            ? "99+"
+            : unread.length;
+    }
+
+    function showNotificationPopup() {
+
+        const overlay =
+            document.getElementById("updatePopupOverlay");
+
+        const list =
+            document.getElementById("updatePopupList");
+
+        if (!overlay || !list) return;
+
+        const readIds = getReadNotifications();
+
+        const unread = notifications.filter(
+            item => !readIds.includes(item.id)
+        );
+
+        if (!unread.length) return;
+
+        list.innerHTML = unread.map(item => `
+            <div class="update-popup-item">
+                <strong>${escapeNotificationText(item.section)}</strong>
+                ${escapeNotificationText(item.message)}
+                <span class="update-popup-date">
+                    ${escapeNotificationText(item.date)}
+                </span>
+            </div>
+        `).join("");
+
+        overlay.hidden = false;
+
+        saveReadNotifications([
+            ...new Set([
+                ...readIds,
+                ...unread.map(item => item.id)
+            ])
+        ]);
+
+        renderNotificationBell();
+    }
+
+    function escapeNotificationText(value) {
+        return String(value || "").replace(/[&<>"']/g, char => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+        })[char]);
+    }
+
+    function closeNotificationPopup() {
+        document.getElementById(
+            "updatePopupOverlay"
+        ).hidden = true;
+    }
+
+    async function loadNotifications() {
+
+        try {
+
+            const response = await fetch(
+                NOTIFICATION_URL + "?v=" + Date.now(),
+                { cache: "no-store" }
+            );
+
+            if (!response.ok) {
+                throw new Error("Notification CSV unavailable");
+            }
+
+            const csvText = await response.text();
+
+            const rows = parseCSV(csvText);
+
+            notifications = rows.slice(1)
+                .filter(row => row[0] && row[3])
+                .map(row => ({
+                    id: row[0].trim(),
+                    date: row[1]?.trim() || "",
+                    section: row[2]?.trim() || "Dashboard Update",
+                    message: row[3]?.trim() || ""
+                }));
+
+            renderNotificationBell();
+
+        } catch (error) {
+            console.warn("Notification loading failed:", error);
+        }
+    }
+
+    function initNotificationSystem() {
+
+    document.getElementById("updateBell")
+        ?.addEventListener("click", showNotificationPopup);
+
+    document.getElementById("closeUpdatePopup")
+        ?.addEventListener("click", closeNotificationPopup);
+
+    document.getElementById("updatePopupOverlay")
+        ?.addEventListener("click", function (event) {
+            if (event.target === this) {
+                closeNotificationPopup();
+            }
+        });
+
+    loadNotifications();
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener(
+        "DOMContentLoaded",
+        initNotificationSystem
+    );
+} else {
+    initNotificationSystem();
+}
+
+})();
