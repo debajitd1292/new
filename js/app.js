@@ -1026,7 +1026,10 @@ document.addEventListener("DOMContentLoaded", function () {
         });
 
         return [...latest.values()]
-            .sort((a, b) => a.originalIndex - b.originalIndex);
+            .sort((a, b) =>
+                notificationDateValue(b.date) -
+                notificationDateValue(a.date)
+            );
     }
 
     function getUnreadNotifications() {
@@ -1040,18 +1043,20 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function renderNotificationBell() {
 
-        const bell = document.getElementById("updateBell");
-        const count = document.getElementById("updateBellCount");
+    const bell = document.getElementById("updateBell");
+    const count = document.getElementById("updateBellCount");
 
-        if (!bell || !count) return;
+    if (!bell || !count) return;
 
-        const unread = getUnreadNotifications();
+    const unread = getUnreadNotifications();
 
-        bell.hidden = unread.length === 0;
+    bell.hidden = unread.length === 0;
 
-        count.textContent = unread.length > 99
-            ? "99+"
-            : unread.length;
+    bell.classList.toggle("has-unread", unread.length > 0);
+
+    count.textContent = unread.length > 99
+        ? "99+"
+        : unread.length;
 
     }
 
