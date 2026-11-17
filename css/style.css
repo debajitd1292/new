@@ -41,6 +41,15 @@
 
 
 /* 01. GLOBAL & BASE */
+@font-face {
+    font-family: 'Inter';
+    src: url('../fonts/Inter-Variable.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+
 body { 
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
@@ -6030,7 +6039,7 @@ body.dark #page-counters .live-counter-divider {
     display: block;
     margin-top: 3px;
     color: #777777;
-    font-size: 11px;
+    font-size: 9px;
 }
 
 .update-popup-empty {
