@@ -4,10 +4,10 @@ const CACHE_NAME = "ppu-dashboard-v70";
 const APP_SHELL = [
     "./",
     "./index.html",
-    
     "./manifest.json",
     "./css/style.css",
     "./fonts/Inter-Variable.ttf",
+    
     "./images/logo.png",
     "./images/app-icon-192.png",
     "./images/app-icon-512.png",
