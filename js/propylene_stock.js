@@ -266,9 +266,14 @@ async function calculatePropyleneStock(
 
   for (const [name, pressure] of Object.entries(pressures)) {
     if (pressure < 10 || pressure > 14) {
+      const sphereName = name
+  	.replace("sphere_a", "Sphere A")
+  	.replace("sphere_b", "Sphere B")
+  	.replace("sphere_c", "Sphere C");
+
       throw new Error(
-        name.replace("_", " ") +
-        " pressure must be between 10 and 14 kg/cm²."
+  	sphereName +
+  	" Pressure must be between 10 and 14 kg/cm²"
       );
     }
   }
