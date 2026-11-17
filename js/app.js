@@ -959,7 +959,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const NOTIFICATION_URL = "./updates/notifications.csv";
 
     // Read status is based on message text, not CSV ID.
-    const STORAGE_KEY = "ppuReadNotificationMessagesV2";
+    const STORAGE_KEY = "ppuReadNotificationIdsV3";
 
     let notifications = [];
 
@@ -1003,45 +1003,49 @@ document.addEventListener("DOMContentLoaded", function () {
         ).getTime();
     }
 
-    // Keep only the latest entry for identical messages.
-    function removeDuplicateNotifications(items) {
+    // Keep only the latest ID for identical messages on the same date.
+function removeDuplicateNotifications(items) {
 
-        const latest = new Map();
+    const latest = new Map();
 
-        items.forEach((item, index) => {
+    items.forEach((item, index) => {
 
-            const key = normalizeMessage(item.message);
-            const previous = latest.get(key);
+        const key =
+            String(item.date || "").trim() +
+            "|" +
+            normalizeMessage(item.message);
 
-            if (
-                !previous ||
-                notificationDateValue(item.date) >=
-                notificationDateValue(previous.date)
-            ) {
-                latest.set(key, {
-                    ...item,
-                    originalIndex: index
-                });
-            }
+        // Latest CSV entry replaces the previous matching entry.
+        latest.set(key, {
+            ...item,
+            originalIndex: index
         });
 
-        return [...latest.values()]
-            .sort((a, b) =>
+    });
+
+    // Newest date first; latest CSV entry first on the same date.
+    return [...latest.values()]
+        .sort((a, b) => {
+            const dateDifference =
                 notificationDateValue(b.date) -
-                notificationDateValue(a.date)
-            );
-    }
+                notificationDateValue(a.date);
 
-    function getUnreadNotifications() {
+            if (dateDifference !== 0) return dateDifference;
 
-        const readKeys = getReadNotifications();
+            return b.originalIndex - a.originalIndex;
+        });
+}
 
-        return notifications.filter(item =>
-            !readKeys.includes(normalizeMessage(item.message))
-        );
-    }
+function getUnreadNotifications() {
 
-    function renderNotificationBell() {
+    const readIds = getReadNotifications();
+
+    return notifications.filter(item =>
+        !readIds.includes(item.id)
+    );
+}
+
+function renderNotificationBell() {
 
     const bell = document.getElementById("updateBell");
     const count = document.getElementById("updateBellCount");
@@ -1058,9 +1062,9 @@ document.addEventListener("DOMContentLoaded", function () {
         ? "99+"
         : unread.length;
 
-    }
+}
 
-    function renderNotificationPopup() {
+function renderNotificationPopup() {
 
         const list = document.getElementById("updatePopupList");
 
@@ -1093,9 +1097,9 @@ document.addEventListener("DOMContentLoaded", function () {
             </div>
         `).join("");
 
-    }
+}
 
-    function escapeNotificationText(value) {
+function escapeNotificationText(value) {
         return String(value || "").replace(/[&<>"']/g, char => ({
             "&": "&amp;",
             "<": "&lt;",
@@ -1103,21 +1107,21 @@ document.addEventListener("DOMContentLoaded", function () {
             '"': "&quot;",
             "'": "&#39;"
         })[char]);
-    }
+}
 
-    function markNotificationsAsRead() {
+function markNotificationsAsRead() {
 
-        const readKeys = getReadNotifications();
+    const readIds = getReadNotifications();
 
-        const unreadKeys = getUnreadNotifications()
-            .map(item => normalizeMessage(item.message));
+    const unreadIds = getUnreadNotifications()
+        .map(item => item.id);
 
-        saveReadNotifications([
-            ...readKeys,
-            ...unreadKeys
-        ]);
+    saveReadNotifications([
+        ...readIds,
+        ...unreadIds
+    ]);
 
-    }
+}
 
     function showNotificationPopup() {
 
