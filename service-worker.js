@@ -3,16 +3,19 @@ const CACHE_NAME = "ppu-dashboard-v70";
 // Application shell: required for offline startup
 const APP_SHELL = [
     "./",
-    "./index.html",
+    "./index.html", 
     "./manifest.json",
     "./css/style.css",
     "./fonts/Inter-Variable.ttf",
-    
+
     "./images/logo.png",
     "./images/app-icon-192.png",
     "./images/app-icon-512.png",
     "./images/apple-touch-icon.png",
     "./images/banner.jpg",
+    "./images/favicon.ico",
+    "./images/favicon-32x32.png",
+    "./images/favicon-16x16.png",
 
     "./js/config.js",
     "./js/data.js",
