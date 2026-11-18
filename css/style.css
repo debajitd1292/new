@@ -6239,5 +6239,7 @@ body.dark #page-calculator .pressure-range-warning {
 }
 
 #page-calculator .propylene-sphere-fields .calculator-input-group > label {
-    text-align: left;
+    text-align: left !important;
+    align-self: flex-start;
+    width: 100%;
 }
