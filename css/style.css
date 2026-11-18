@@ -6237,3 +6237,7 @@ body.dark #page-calculator .pressure-range-warning {
         font-size: 13px;
     }
 }
+
+#page-calculator .propylene-sphere-fields .calculator-input-group > label {
+    text-align: left;
+}
